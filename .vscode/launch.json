@@ -4,13 +4,12 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-        
         {
-            "name": "Python: Current File (Integrated Terminal)",
-            "type": "python",
+            "type": "bashdb",
             "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
+            "name": "Bash-Debug (hardcoded script name)",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/networking-swagger-java.sh",
             "args": ["http://178.211.54.214:5000/swagger/v1/swagger.json", "com.oneframe.android", "KocHub"]
         },
         {
