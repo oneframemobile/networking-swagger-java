@@ -9,240 +9,274 @@ import re
 import urllib2
 import ssl
 import shutil
+import json
 
 
-# 1.0.0
-#networking-swagger-java -url -package -serviceName -resultJsonKey
-# retro -parser classes
-class Interval:
-    start = -1
-    end = -1
+class SwaggerFunctionParam(object):
 
-    def __init__(self):
-        pass
+    name = ""
+    paramType = ""
+    required = ""
+    dataType = ""
+    requestModel = ""
 
-
-apiRegex = re.compile(r'@(POST|GET)\(\"(.*?)\"\)')
-
-
-class Api:
-
-    method = None
-    address = None
-
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def parse(raw):
-        api = Api()
-        api.method = re.findall(apiRegex, raw)[0][0]
-        api.address = re.findall(apiRegex, raw)[0][1]
-
-        return api
-
-
-headerRegex = re.compile(r'@Headers\({\"(.*?)\"}\)')
-
-
-class Header:
-
-    name = None
-    value = None
-
-    @classmethod
-    def __init__(self, name, value):
+    # The class "constructor" - It's actually an initializer
+    def __init__(self, name, paramType, required, dataType, requestModel):
         self.name = name
-        self.value = value
-
-    @staticmethod
-    def has(raw):
-        return len(re.findall(headerRegex, raw)) > 0
-
-    @staticmethod
-    def parse(raw):
-        headers = []
-        contents = re.findall(headerRegex, raw)[0].split(",")
-
-        for content in contents:
-            splits = content.split(":")
-
-            header = Header(splits[0], splits[1])
-            headers.append(header)
-
-        return headers
+        self.paramType = paramType
+        self.required = required
+        self.dataType = dataType
+        self.requestModel = requestModel
 
 
-parameterRegex = re.compile(
-    r'@retrofit2.http.(Query|Path|Body)\(?\"?(.*?)\"?\)? (.*?) (.*?),? ')
+def make_SwaggerFunctionParam(_name, _paramType, required, _dataType, _requestModel):
+    func = SwaggerFunctionParam(
+        _name, _paramType, required, _dataType, _requestModel)
+    return func
 
 
-class Parameter:
-
-    # Represents annotation is query, path or body
-    annotation = None
-
-    # Represents annotations key like @Query("_key_")
-    key = ''
-
-    # Represents parameter name
-    name = None
-
-    # Represents parameter class type
-    clazz = None
-
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def has(raw):
-        return r'@retrofit2' in raw
-
-    @staticmethod
-    def parse(params):
-        parameters = []
-
-        matches = re.findall(parameterRegex, params)
-        for match in matches:
-            parameter = Parameter()
-            parameter.annotation = match[0]
-            parameter.key = match[1] if match[1] is not '' else None
-            parameter.clazz = match[2]
-            parameter.name = match[3]
-
-            parameters.append(parameter)
-
-        return parameters
-
-
-class Function:
-
-    name = None
-    api = None
-    headers = []
-    response = None
+class SwaggerFunction(object):
+    path = ""
+    funcName = ""
+    httpMethod = ""
+    requestContentTypes = []
+    responseContentTypes = []
+    securityParams = []
     parameters = []
+    resultType = ""
+    resultModel = "String"
 
-    def __init__(self):
-        pass
+    postBodyParam = "\"\""
 
-    @staticmethod
-    def parse(content):
-        raw = ''.join(content).replace("\n", "")
-        if Parameter.has(raw):
-            params = raw[raw.index(r'@retrofit2'):]
-        raw = raw.replace(" ", "")
+    # if have body
+    bodyFormula = ""
+    # if have path
+    pathFormula = ""
+    # if have query
+    queryFormula = ""
+    # and ???????
+    funcInlineParam = ""
 
-        function = Function()
+    headerFormula = ""
 
-        if Header.has(raw):
-            function.headers = Header.parse(raw)
+    formDataFormula = ""
 
-        function.name = re.findall(r'>(.*?)\(', raw)[0]
-        function.api = Api.parse(raw)
-        function.response = re.findall(r'Call<(.*?)>', raw)[0]
+    # The class "constructor" - It's actually an initializer
 
-        if Parameter.has(raw):
-            function.parameters = Parameter.parse(params)
-
-        return function
-
-    def querypath(self):
-        querypath = "\"" + self.api.address + "\""
-
-        paths = self.pathparameters()
-        if paths is not None:
-            for path in paths:
-                old = "{" + path.key + "}"
-                new = "\" + " + path.name + " + \""
-                querypath = querypath.replace(old, new)
-
-                del old, new
-
-        queries = self.queryparameters()
-        if queries is not None:
-            querypath += " + \"?\" + "
-            for query in queries:
-                querypath += "\"" + query.key + "=\" + " + query.name
-                if queries.index(query) != len(queries) - 1:
-                    querypath += " + \"&\" + "
-
-        del paths, queries
-
-        return querypath
-
-    def bodyparameter(self):
-        for parameter in self.parameters:
-            if parameter.annotation == "Body":
-                return parameter
-
-        return None
-
-    def pathparameters(self):
-        paths = None
-
-        for parameter in self.parameters:
-            if parameter.annotation == "Path":
-                if paths is None:
-                    paths = []
-
-                paths.append(parameter)
-
-        return paths
-
-    def queryparameters(self):
-        queries = None
-
-        for parameter in self.parameters:
-            if parameter.annotation == "Query":
-                if queries is None:
-                    queries = []
-
-                queries.append(parameter)
-
-        return queries
+    def __init__(self, _path):
+        self.funcName = ""
+        self.httpMethod = ""
+        self.requestContentTypes = []
+        self.responseContentTypes = []
+        self.securityParams = []
+        self.parameters = []
+        self.resultType = ""
+        self.resultModel = ""
+        self.path = _path
 
 
-class Clazz:
-    name = None
-    functions = None
+def clear():
+    path = ""
 
-    def __init__(self):
-        pass
 
-    @staticmethod
-    def parse(lines):
-        clazz = Clazz()
+def make_SwaggerFunction(_path):
+    func = SwaggerFunction(_path)
+    return func
 
-        intervals = []
-        interval = Interval()
 
-        for index in range(0, len(lines)):
-            line = lines[index]
-            if (line == "   */\n"):
-                interval = Interval()
-                interval.start = index + 1
-                continue
-            if(line.endswith(");\n")):
-                interval.end = index + 1
-                intervals.append(interval)
+def swift_TypeConverter(val):
+    if val == "string" or val == "" or val == "file":
+        return "String"
+    elif val == "integer":
+        return "Int"
+    elif val == "array":
+        return "[]"
+    else:
+        return val
 
-        del line
 
-        for interval in intervals:
-            content = lines[interval.start: interval.end]
+def func_definitionTypeSplit(val):
+    _definitionTypeSplit = val.split("/")
+    definitionTypeUnWrapped = _definitionTypeSplit[len(
+        _definitionTypeSplit)-1]
 
-            function = Function.parse(content)
+    return definitionTypeUnWrapped
+    # return str(definitionTypeUnWrapped).replace(
+    #     "[", "").replace("]", "")
 
-            if clazz.functions is None:
-                clazz.functions = []
 
-            clazz.functions.append(function)
-            del content
+def arrayConverter(val):
+    return "["+swift_TypeConverter(val)+"]"
 
-        return clazz
 
-# end retro -parser classes
+def getSwaggerFunctionInfo(swaggerWebUrl):
+    functions = []
+    # webPath = 'http://petstore.swagger.io/v2/swagger.json'
+    # 'http://178.211.54.214:5000/swagger/v1/swagger.json'
+    # swagger-codegen generate -i http://petstore.swagger.io/v2/swagger.json -l swift4
+    try:
+        '''
+        result = json.load(urllib2.urlopen(webPath))
+        for path in result["paths"]:
+            pprint(result["paths"][path])
+        '''
+        jsonData = ""
+        # this control know url for localfile or apicall
+        if swaggerWebUrl.__contains__("http"):
+            resp = urllib2.urlopen(swaggerWebUrl)
+            dataString = resp.read().decode('utf-8')
+            jsonData = json.loads(dataString)
+        else:
+            with open(swaggerWebUrl) as json_file:
+                data = json.load(json_file)
+                jsonData = data
+        # pprint(json(jsonData["paths"]))
+        for path in jsonData["paths"]:
+            print(path)
+            for httpType in jsonData["paths"][path]:
+                func = make_SwaggerFunction(str(path))
+                func.httpMethod = str(httpType)
+                func.funcName = str(
+                    jsonData["paths"][path][httpType]["operationId"])
+                # request content type var mi?
+                if jsonData["paths"][path][httpType].has_key('consumes'):
+                    if len(jsonData["paths"][path][httpType]["consumes"]) > 0:
+                        for requestContentType in jsonData["paths"][path][httpType]["consumes"]:
+                            func.requestContentTypes.append(
+                                str(requestContentType))
+                # response content type var mi?
+                if len(jsonData["paths"][path][httpType]["produces"]) > 0:
+                    for responseContentType in jsonData["paths"][path][httpType]["produces"]:
+                        func.requestContentTypes.append(
+                            str(responseContentType))
+                # paramaters varmi ?
+                if str(jsonData["paths"][path][httpType].get("parameters")) != 'None' and len(jsonData["paths"][path][httpType].get("parameters")) > 0:
+                    for parameters in jsonData["paths"][path][httpType]["parameters"]:
+                        name = str(parameters["name"])
+                        paramType = str(parameters["in"])
+                        required = str(parameters["required"])
+                        dataType = ""
+                        requestModel = ""
+                        if str(parameters.get("schema")) != 'None':
+                            if str(parameters["schema"].get("type")) != 'None':
+                                dataType = str(parameters["schema"].get("type")) == "array" and str(
+                                    parameters["schema"]["type"]) or "String"
+                            else:
+                                dataType = "String"
+                            if str(parameters.get("schema").get("items")) != 'None':
+                                requestModel = func_definitionTypeSplit(
+                                    str(parameters.get("schema").get("items").get("$ref")))
+                                if str(parameters.get("schema").get("type")) != "None":
+                                    requestModel = str(parameters.get("schema").get(
+                                        "type")) == "array" and arrayConverter(requestModel) or requestModel
+                            else:
+                                if str(parameters.get("schema").get("$ref")) != 'None':
+                                    requestModel = func_definitionTypeSplit(
+                                        str(parameters.get("schema").get("$ref")))
+                                else:
+                                    requestModel = "String"
+                        else:
+                            dataType = swift_TypeConverter(
+                                str(parameters["type"]))
+                            if str(parameters.get("items")) != 'None':
+                                requestModel = arrayConverter(
+                                    str(parameters["items"].get("type")))
+                            else:
+                                requestModel = dataType
+                        # body ise ise formula swift param fortmatinda
+                        if paramType == "body":
+                            func.postBodyParam = name
+                            func.bodyFormula += len(func.bodyFormula) > 0 and (
+                                ","+name + " : " + requestModel) or name + " : " + requestModel
+                        elif paramType == "formData":
+                            func.formDataFormula += len(func.formDataFormula) > 0 and (
+                                ", \""+name+"\"" + " : " + "\"\("+name+")\"") or "\""+name+"\"" + " : " + "\"\("+name+")\""
+                        elif paramType == "query":
+                            if "?" in func.queryFormula:
+                                func.queryFormula += "&"+name+"=\("+name+")"
+                            else:
+                                func.queryFormula = func.path + \
+                                    "?"+name+"=\("+name+")"
+                        elif paramType == "path":
+                            # Fix path double index.
+                            if func.pathFormula == "":
+                                func.pathFormula = func.path.replace(
+                                    "{"+name+"}", ("\("+name+")"))
+                            else:
+                                func.pathFormula = func.pathFormula.replace(
+                                    "{"+name+"}", ("\("+name+")"))
+                            # is have " character ?
+                            func.pathFormula = func.pathFormula[0] == "\"" and func.pathFormula or "\"" + \
+                                func.pathFormula+"\""
+                        elif paramType == "header":
+                            func.headerFormula += len(func.bodyFormula) > 0 and (
+                                ","+name + " : " + requestModel) or name + " : " + requestModel
+                        else:
+                            func.pathFormula = "\""+func.pathFormula+"\""
+                        if name != "" and paramType != "header":
+                            if func.funcInlineParam == "":
+                                func.funcInlineParam = name + ": " + requestModel
+                            else:
+                                func.funcInlineParam += ", " + name + ": " + requestModel
+                            func.bodyFormula = name
+                        func.parameters.append(make_SwaggerFunctionParam(
+                            name, paramType, required, dataType, requestModel))
+
+                    if func.funcInlineParam != "":
+                        func.funcInlineParam += ", "
+                    if func.queryFormula != "":
+                        func.queryFormula = "\""+func.queryFormula+"\""
+                    if func.formDataFormula != "":
+                        func.formDataFormula = "[" + func.formDataFormula + "]"
+                        func.bodyFormula = ""
+
+                else:
+                    func.pathFormula = "\""+func.path+"\""
+                if len(jsonData["paths"][path][httpType]["responses"]) > 0:
+                    if str(jsonData["paths"][path][httpType]["responses"].get("200")) != 'None':
+                        if str(jsonData["paths"][path][httpType]["responses"]["200"].get("schema")) != 'None':
+                            if str(jsonData["paths"][path][httpType]["responses"]["200"].get("schema").get("$ref")) != 'None':
+                                definitionTypeSplit = str(jsonData["paths"][path][httpType]["responses"].get(
+                                    "200").get("schema").get("$ref")).split("/")
+                                definitionTypeUnWrapped = definitionTypeSplit[len(
+                                    definitionTypeSplit)-1]
+                                func.resultModel = str(definitionTypeUnWrapped).replace(
+                                    "[", "").replace("]", "")
+                                if "List" not in definitionTypeUnWrapped:
+                                    func.resultType = "String"
+                                else:
+                                    func.resultType = "List"
+                            else:
+                                schema = jsonData["paths"][path][httpType]["responses"]["200"].get(
+                                    "schema")
+                                if str(schema.get("$items")) != 'None':
+                                    func.resultModel = func_definitionTypeSplit(
+                                        schema.get("$items").get("$ref"))
+                                else:
+                                    func.resultModel = str(schema.get(
+                                        "$ref")) != 'None' and func_definitionTypeSplit(schema.get("$ref")) or "String"
+                                if str(schema.get("type")) != 'None':
+                                    func.resultType = str(schema.get(
+                                        "type")) == "object" and "String" or arrayConverter(str(schema.get("type")))
+                                else:
+                                    func.resultType = "String"
+                func.resultModel = swift_TypeConverter(func.resultModel)
+                functions.append(func)
+            # pprint(func.funcName, func.httpMethod)
+            # for requestContentTypes in jsonData["paths"][path][httpType]["consumes"]):
+            #       pprint(requestContentTypes)
+            #  break
+            #    break
+        # print(len(functions))
+        return functions
+    # with open(last.strip(), 'wb') as fl:
+        # fl.write(resp.read())
+    except urllib2.HTTPError as e:
+        print('HTTPError = ' + str(e.code))
+    except urllib2.URLError as e:
+        print('URLError = ' + str(e.reason))
+    except Exception as e:
+        print('generic exception: ' + str(e))
 
 
 def constant(f):
@@ -252,24 +286,6 @@ def constant(f):
     def fget(self):
         return f()
     return property(fget, fset)
-
-
-class _CodeLine(object):
-    @constant
-    def NEWLINE():
-        return "\n"
-
-    @constant
-    def SPACE_AFTER():
-        return "    "
-
-    @constant
-    def SLASH():
-        return "/"
-
-    @constant
-    def DOT():
-        return "."
 
 
 class _DevelopmentEnvoirment(object):
@@ -294,6 +310,24 @@ class _MessageType(object):
     @constant
     def SUCCESS():
         return "SUCCESS"
+
+
+class _CodeLine(object):
+    @constant
+    def NEWLINE():
+        return "\n"
+
+    @constant
+    def SPACE_AFTER():
+        return "    "
+
+    @constant
+    def SLASH():
+        return "/"
+
+    @constant
+    def DOT():
+        return "."
 
 
 # MESSAGE INIT
@@ -362,7 +396,7 @@ sub_module_type = '-s'
 #folders = [WIREFRAME, INTERACTOR, VIEW ,PRESENTER, PROTOCOLS ]
 # CURRENT_DEV_ENV LOCAL OR ONLINE(Github)
 #CURRENT_DEV_ENV = DEV_ENV.ONLINE
-CURRENT_DEV_ENV = DEV_ENV.ONLINE
+CURRENT_DEV_ENV = DEV_ENV.LOCAL
 SWIFT = ".swift"
 model_package = "//{{model_package}}"
 request_func = "//{{request_func}}"
@@ -437,6 +471,180 @@ def createFolder():
         #
         #	if not os.path.isdir(root_path + folder):
         #		os.makedirs(root_path + folder)
+
+# swagger json parser
+
+
+def getSwaggerFunctionInfo(swaggerWebUrl):
+    functions = []
+    # webPath = 'http://petstore.swagger.io/v2/swagger.json'
+    # 'http://178.211.54.214:5000/swagger/v1/swagger.json'
+    # swagger-codegen generate -i http://petstore.swagger.io/v2/swagger.json -l swift4
+    try:
+        '''
+        result = json.load(urllib2.urlopen(webPath))
+        for path in result["paths"]:
+            pprint(result["paths"][path])
+        '''
+        jsonData = ""
+        # this control know url for localfile or apicall
+        if swaggerWebUrl.__contains__("http"):
+            resp = urllib2.urlopen(swaggerWebUrl)
+            dataString = resp.read().decode('utf-8')
+            jsonData = json.loads(dataString)
+        else:
+            with open(swaggerWebUrl) as json_file:
+                data = json.load(json_file)
+                jsonData = data
+        # pprint(json(jsonData["paths"]))
+        for path in jsonData["paths"]:
+            print(path)
+            for httpType in jsonData["paths"][path]:
+                func = make_SwaggerFunction(str(path))
+                func.httpMethod = str(httpType)
+                func.funcName = str(
+                    jsonData["paths"][path][httpType]["operationId"])
+                # request content type var mi?
+                if jsonData["paths"][path][httpType].has_key('consumes'):
+                    if len(jsonData["paths"][path][httpType]["consumes"]) > 0:
+                        for requestContentType in jsonData["paths"][path][httpType]["consumes"]:
+                            func.requestContentTypes.append(
+                                str(requestContentType))
+                # response content type var mi?
+                if len(jsonData["paths"][path][httpType]["produces"]) > 0:
+                    for responseContentType in jsonData["paths"][path][httpType]["produces"]:
+                        func.requestContentTypes.append(
+                            str(responseContentType))
+                # paramaters varmi ?
+                if str(jsonData["paths"][path][httpType].get("parameters")) != 'None' and len(jsonData["paths"][path][httpType].get("parameters")) > 0:
+                    for parameters in jsonData["paths"][path][httpType]["parameters"]:
+                        name = str(parameters["name"])
+                        paramType = str(parameters["in"])
+                        required = str(parameters["required"])
+                        dataType = ""
+                        requestModel = ""
+                        if str(parameters.get("schema")) != 'None':
+                            if str(parameters["schema"].get("type")) != 'None':
+                                dataType = str(parameters["schema"].get("type")) == "array" and str(
+                                    parameters["schema"]["type"]) or "String"
+                            else:
+                                dataType = "String"
+                            if str(parameters.get("schema").get("items")) != 'None':
+                                requestModel = func_definitionTypeSplit(
+                                    str(parameters.get("schema").get("items").get("$ref")))
+                                if str(parameters.get("schema").get("type")) != "None":
+                                    requestModel = str(parameters.get("schema").get(
+                                        "type")) == "array" and arrayConverter(requestModel) or requestModel
+                            else:
+                                if str(parameters.get("schema").get("$ref")) != 'None':
+                                    requestModel = func_definitionTypeSplit(
+                                        str(parameters.get("schema").get("$ref")))
+                                else:
+                                    requestModel = "String"
+                        else:
+                            dataType = swift_TypeConverter(
+                                str(parameters["type"]))
+                            if str(parameters.get("items")) != 'None':
+                                requestModel = arrayConverter(
+                                    str(parameters["items"].get("type")))
+                            else:
+                                requestModel = dataType
+                        # body ise ise formula swift param fortmatinda
+                        if paramType == "body":
+                            func.postBodyParam = name
+                            func.bodyFormula += len(func.bodyFormula) > 0 and (
+                                ","+name + " : " + requestModel) or name + " : " + requestModel
+                        elif paramType == "formData":
+                            func.formDataFormula += len(func.formDataFormula) > 0 and (
+                                ", \""+name+"\"" + " : " + "\"\("+name+")\"") or "\""+name+"\"" + " : " + "\"\("+name+")\""
+                        elif paramType == "query":
+                            if "?" in func.queryFormula:
+                                func.queryFormula += "&"+name+"=\("+name+")"
+                            else:
+                                func.queryFormula = func.path + \
+                                    "?"+name+"=\("+name+")"
+                        elif paramType == "path":
+                            # Fix path double index.
+                            if func.pathFormula == "":
+                                func.pathFormula = func.path.replace(
+                                    "{"+name+"}", ("\("+name+")"))
+                            else:
+                                func.pathFormula = func.pathFormula.replace(
+                                    "{"+name+"}", ("\("+name+")"))
+                            # is have " character ?
+                            func.pathFormula = func.pathFormula[0] == "\"" and func.pathFormula or "\"" + \
+                                func.pathFormula+"\""
+                        elif paramType == "header":
+                            func.headerFormula += len(func.bodyFormula) > 0 and (
+                                ","+name + " : " + requestModel) or name + " : " + requestModel
+                        else:
+                            func.pathFormula = "\""+func.pathFormula+"\""
+                        if name != "" and paramType != "header":
+                            if func.funcInlineParam == "":
+                                func.funcInlineParam = name + ": " + requestModel
+                            else:
+                                func.funcInlineParam += ", " + name + ": " + requestModel
+                            func.bodyFormula = name
+                        func.parameters.append(make_SwaggerFunctionParam(
+                            name, paramType, required, dataType, requestModel))
+
+                    if func.funcInlineParam != "":
+                        func.funcInlineParam += ", "
+                    if func.queryFormula != "":
+                        func.queryFormula = "\""+func.queryFormula+"\""
+                    if func.formDataFormula != "":
+                        func.formDataFormula = "[" + func.formDataFormula + "]"
+                        func.bodyFormula = ""
+
+                else:
+                    func.pathFormula = "\""+func.path+"\""
+                if len(jsonData["paths"][path][httpType]["responses"]) > 0:
+                    if str(jsonData["paths"][path][httpType]["responses"].get("200")) != 'None':
+                        if str(jsonData["paths"][path][httpType]["responses"]["200"].get("schema")) != 'None':
+                            if str(jsonData["paths"][path][httpType]["responses"]["200"].get("schema").get("$ref")) != 'None':
+                                definitionTypeSplit = str(jsonData["paths"][path][httpType]["responses"].get(
+                                    "200").get("schema").get("$ref")).split("/")
+                                definitionTypeUnWrapped = definitionTypeSplit[len(
+                                    definitionTypeSplit)-1]
+                                func.resultModel = str(definitionTypeUnWrapped).replace(
+                                    "[", "").replace("]", "")
+                                if "List" not in definitionTypeUnWrapped:
+                                    func.resultType = "String"
+                                else:
+                                    func.resultType = "List"
+                            else:
+                                schema = jsonData["paths"][path][httpType]["responses"]["200"].get(
+                                    "schema")
+                                if str(schema.get("$items")) != 'None':
+                                    func.resultModel = func_definitionTypeSplit(
+                                        schema.get("$items").get("$ref"))
+                                else:
+                                    func.resultModel = str(schema.get(
+                                        "$ref")) != 'None' and func_definitionTypeSplit(schema.get("$ref")) or "String"
+                                if str(schema.get("type")) != 'None':
+                                    func.resultType = str(schema.get(
+                                        "type")) == "object" and "String" or arrayConverter(str(schema.get("type")))
+                                else:
+                                    func.resultType = "String"
+                func.resultModel = swift_TypeConverter(func.resultModel)
+                functions.append(func)
+            # pprint(func.funcName, func.httpMethod)
+            # for requestContentTypes in jsonData["paths"][path][httpType]["consumes"]):
+            #       pprint(requestContentTypes)
+            #  break
+            #    break
+        # print(len(functions))
+        return functions
+    # with open(last.strip(), 'wb') as fl:
+        # fl.write(resp.read())
+    except urllib2.HTTPError as e:
+        print('HTTPError = ' + str(e.code))
+    except urllib2.URLError as e:
+        print('URLError = ' + str(e.reason))
+    except Exception as e:
+        print('generic exception: ' + str(e))
+
+# end swagger json -parser classes
 
 
 def validateParentModulePath():
@@ -608,7 +816,10 @@ def createParentModules():
     createFile(manager_file_path, manager_file_content)
     # NETWORKING SWAGGER MANAGER operations END
 
+
 generatedModels = []
+
+
 def createUnitTestModule():
     global unit_test_filename, unit_test_file_content, replacement, child_replacement, unit_test_file_path, NETWORKNG_SWAGGER_UNIT_TEST_TEMPLATE
     if IS_ENABLE_UNIT_TEST_GENERATE == True:
@@ -631,8 +842,6 @@ def createUnitTestModule():
                                  "[MODEL_NAME]": "models" + CODING.DOT + model[0]}
             childInsertMember(childInnerTemplate=CHILD_MANAGER_IMPORT_PACKAGE_TEMPLATE,
                               insertingModule=unit_test_file_path, subType=0)
-        
-            
 
 
 def runSwaggerModelOperations():
@@ -656,7 +865,6 @@ def runSwaggerModelOperations():
         shutil.rmtree("docs")
     if os.path.isdir(os.getcwd() + CODING.SLASH + "src/test"):
         shutil.rmtree(os.getcwd() + CODING.SLASH + "src/test")
-    
 
 
 def getModelsAndReplacePackage(path, packageName):
@@ -704,135 +912,244 @@ def replaceModelPackage(path, packageName, subList):
         with open(path+subItem, 'w') as file:
             file.writelines(lineDatas)
 
+    functions = []
+    # webPath = 'http://petstore.swagger.io/v2/swagger.json'
+    # 'http://178.211.54.214:5000/swagger/v1/swagger.json'
+    # swagger-codegen generate -i http://petstore.swagger.io/v2/swagger.json -l swift4
+    try:
+        '''
+        result = json.load(urllib2.urlopen(webPath))
+        for path in result["paths"]:
+            pprint(result["paths"][path])
+        '''
+        jsonData = ""
+        # this control know url for localfile or apicall
+        if swaggerWebUrl.__contains__("http"):
+            resp = urllib2.urlopen(swaggerWebUrl)
+            dataString = resp.read().decode('utf-8')
+            jsonData = json.loads(dataString)
+        else:
+            with open(swaggerWebUrl) as json_file:
+                data = json.load(json_file)
+                jsonData = data
+        # pprint(json(jsonData["paths"]))
+        for path in jsonData["paths"]:
+            print(path)
+            for httpType in jsonData["paths"][path]:
+                func = make_SwaggerFunction(str(path))
+                func.httpMethod = str(httpType)
+                func.funcName = str(
+                    jsonData["paths"][path][httpType]["operationId"])
+                # request content type var mi?
+                if jsonData["paths"][path][httpType].has_key('consumes'):
+                    if len(jsonData["paths"][path][httpType]["consumes"]) > 0:
+                        for requestContentType in jsonData["paths"][path][httpType]["consumes"]:
+                            func.requestContentTypes.append(
+                                str(requestContentType))
+                # response content type var mi?
+                if len(jsonData["paths"][path][httpType]["produces"]) > 0:
+                    for responseContentType in jsonData["paths"][path][httpType]["produces"]:
+                        func.requestContentTypes.append(
+                            str(responseContentType))
+                # paramaters varmi ?
+                if str(jsonData["paths"][path][httpType].get("parameters")) != 'None' and len(jsonData["paths"][path][httpType].get("parameters")) > 0:
+                    for parameters in jsonData["paths"][path][httpType]["parameters"]:
+                        name = str(parameters["name"])
+                        paramType = str(parameters["in"])
+                        required = str(parameters["required"])
+                        dataType = ""
+                        requestModel = ""
+                        if str(parameters.get("schema")) != 'None':
+                            if str(parameters["schema"].get("type")) != 'None':
+                                dataType = str(parameters["schema"].get("type")) == "array" and str(
+                                    parameters["schema"]["type"]) or "String"
+                            else:
+                                dataType = "String"
+                            if str(parameters.get("schema").get("items")) != 'None':
+                                requestModel = func_definitionTypeSplit(
+                                    str(parameters.get("schema").get("items").get("$ref")))
+                                if str(parameters.get("schema").get("type")) != "None":
+                                    requestModel = str(parameters.get("schema").get(
+                                        "type")) == "array" and arrayConverter(requestModel) or requestModel
+                            else:
+                                if str(parameters.get("schema").get("$ref")) != 'None':
+                                    requestModel = func_definitionTypeSplit(
+                                        str(parameters.get("schema").get("$ref")))
+                                else:
+                                    requestModel = "String"
+                        else:
+                            dataType = swift_TypeConverter(
+                                str(parameters["type"]))
+                            if str(parameters.get("items")) != 'None':
+                                requestModel = arrayConverter(
+                                    str(parameters["items"].get("type")))
+                            else:
+                                requestModel = dataType
+                        # body ise ise formula swift param fortmatinda
+                        if paramType == "body":
+                            func.postBodyParam = name
+                            func.bodyFormula += len(func.bodyFormula) > 0 and (
+                                ","+name + " : " + requestModel) or name + " : " + requestModel
+                        elif paramType == "formData":
+                            func.formDataFormula += len(func.formDataFormula) > 0 and (
+                                ", \""+name+"\"" + " : " + "\"\("+name+")\"") or "\""+name+"\"" + " : " + "\"\("+name+")\""
+                        elif paramType == "query":
+                            if "?" in func.queryFormula:
+                                func.queryFormula += "&"+name+"=\("+name+")"
+                            else:
+                                func.queryFormula = func.path + \
+                                    "?"+name+"=\("+name+")"
+                        elif paramType == "path":
+                            # Fix path double index.
+                            if func.pathFormula == "":
+                                func.pathFormula = func.path.replace(
+                                    "{"+name+"}", ("\("+name+")"))
+                            else:
+                                func.pathFormula = func.pathFormula.replace(
+                                    "{"+name+"}", ("\("+name+")"))
+                            # is have " character ?
+                            func.pathFormula = func.pathFormula[0] == "\"" and func.pathFormula or "\"" + \
+                                func.pathFormula+"\""
+                        elif paramType == "header":
+                            func.headerFormula += len(func.bodyFormula) > 0 and (
+                                ","+name + " : " + requestModel) or name + " : " + requestModel
+                        else:
+                            func.pathFormula = "\""+func.pathFormula+"\""
+                        if name != "" and paramType != "header":
+                            if func.funcInlineParam == "":
+                                func.funcInlineParam = name + ": " + requestModel
+                            else:
+                                func.funcInlineParam += ", " + name + ": " + requestModel
+                            func.bodyFormula = name
+                        func.parameters.append(make_SwaggerFunctionParam(
+                            name, paramType, required, dataType, requestModel))
 
-def runRetrofitParser():
-    generateApiFuncCount = 0
-    oldApiPath = os.getcwd() + CODING.SLASH + SWAGGER_CLIENT_FILEPATH + "api/"
-    subList = os.listdir(oldApiPath)
-    for apiFile in subList:
-        apiFilePath = oldApiPath + apiFile
+                    if func.funcInlineParam != "":
+                        func.funcInlineParam += ", "
+                    if func.queryFormula != "":
+                        func.queryFormula = "\""+func.queryFormula+"\""
+                    if func.formDataFormula != "":
+                        func.formDataFormula = "[" + func.formDataFormula + "]"
+                        func.bodyFormula = ""
 
-        with open(apiFilePath) as fp:
-            lines = fp.readlines()
+                else:
+                    func.pathFormula = "\""+func.path+"\""
+                if len(jsonData["paths"][path][httpType]["responses"]) > 0:
+                    if str(jsonData["paths"][path][httpType]["responses"].get("200")) != 'None':
+                        if str(jsonData["paths"][path][httpType]["responses"]["200"].get("schema")) != 'None':
+                            if str(jsonData["paths"][path][httpType]["responses"]["200"].get("schema").get("$ref")) != 'None':
+                                definitionTypeSplit = str(jsonData["paths"][path][httpType]["responses"].get(
+                                    "200").get("schema").get("$ref")).split("/")
+                                definitionTypeUnWrapped = definitionTypeSplit[len(
+                                    definitionTypeSplit)-1]
+                                func.resultModel = str(definitionTypeUnWrapped).replace(
+                                    "[", "").replace("]", "")
+                                if "List" not in definitionTypeUnWrapped:
+                                    func.resultType = "String"
+                                else:
+                                    func.resultType = "List"
+                            else:
+                                schema = jsonData["paths"][path][httpType]["responses"]["200"].get(
+                                    "schema")
+                                if str(schema.get("$items")) != 'None':
+                                    func.resultModel = func_definitionTypeSplit(
+                                        schema.get("$items").get("$ref"))
+                                else:
+                                    func.resultModel = str(schema.get(
+                                        "$ref")) != 'None' and func_definitionTypeSplit(schema.get("$ref")) or "String"
+                                if str(schema.get("type")) != 'None':
+                                    func.resultType = str(schema.get(
+                                        "type")) == "object" and "String" or arrayConverter(str(schema.get("type")))
+                                else:
+                                    func.resultType = "String"
+                func.resultModel = swift_TypeConverter(func.resultModel)
+                functions.append(func)
+            # pprint(func.funcName, func.httpMethod)
+            # for requestContentTypes in jsonData["paths"][path][httpType]["consumes"]):
+            #       pprint(requestContentTypes)
+            #  break
+            #    break
+        # print(len(functions))
+        return functions
+    # with open(last.strip(), 'wb') as fl:
+        # fl.write(resp.read())
+    except urllib2.HTTPError as e:
+        print('HTTPError = ' + str(e.code))
+    except urllib2.URLError as e:
+        print('URLError = ' + str(e.reason))
+    except Exception as e:
+        print('generic exception: ' + str(e))
 
-            clazz = Clazz.parse(lines)
-            showErrorMessages(MESSAGE.INFO, str(
-                len(clazz.functions)) + str(clazz.name) + " api func generating...")
-            generateApiFuncCount += generateNetworkingFunc(clazz.functions)
-            if IS_ENABLE_UNIT_TEST_GENERATE == True:
-                generateUnitTestFunc(clazz.functions)
-    #print len(clazz.functions)
-    '''
-    public GenericObjectRequest [FUNC_NAME](final NetworkResponseListener<[RESULT_MODEL_NAME], ServiceErrorModel> listener) {
-         return manager.get("[QUERY_PATH]", listener);
-     }
-       public GenericObjectRequest [FUNC_NAME]([REQUEST_MODEL_NAME] model, final NetworkResponseListener<[RESULT_MODEL_NAME], ServiceErrorModel> listener) {
-       return manager.post("[QUERY_PATH]", model, listener);
-     }
-    '''
-    #print clazz.functions[0].querypath()
-    showErrorMessages(MESSAGE.INFO, str(
-        generateApiFuncCount) + " api func generated")
-    if os.path.isdir(oldApiPath):
-        shutil.rmtree(oldApiPath)
-    if os.path.isdir(os.getcwd() + CODING.SLASH + "src/main/java/io/"):
-        shutil.rmtree(os.getcwd() + CODING.SLASH + "src/main/java/io/")
 
-    del lines
-
-
-def generateNetworkingFunc(Functions):
+def runFuncSwaggerGenerator(Functions):
     global child_replacement
     generateApiFuncCount = 0
     for func in Functions:
-        showErrorMessages(MESSAGE.INFO,  func.name + " api func generating...")
-        hasInlineParam = False
-        funcInlineParam = ""
-        funcBodyInlineParam = ""
-        if len(func.parameters) > 0:
-            for param in func.parameters:
-                #print param.name + " " + param.clazz + " type : " + param.annotation
-                if param.annotation == "Query" or param.annotation == "Path":
-                    hasInlineParam = True
-                    funcInlineParam += "," + param.clazz + " " + param.name
-                if param.annotation == "Body":
-                    funcBodyInlineParam = param.clazz
-            #print param.name + " " + param.clazz + " type : " + param.annotation
-            #print func.bodyparameter
 
-#print func.name + " " + func.api.method + " " + func.api.address + " " + func.response + " " + func.querypath()
-# GET FUNC
-        if intern(func.api.method) is intern("GET"):
-            if hasInlineParam == True:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response,
-                                     "[QUERY_PATH]": func.querypath(), "[FUNC_PARAM]": funcInlineParam}
-            else:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response,
-                                     "[QUERY_PATH]": func.querypath(), "[FUNC_PARAM]": ""}
+        if intern(func.httpMethod) is intern("get"):
+            # showErrorMessages(MESSAGE.INFO,  func.funcName +
+            #                   " api func generating...")
+            child_replacement = {"[FUNC_NAME]": func.funcName, "[RESULT_MODEL_NAME]": func.resultModel,
+                                 "[QUERY_PATH]": func.queryFormula == "" and func.pathFormula or func.queryFormula,
+                                 "[FUNC_PARAM]": func.funcInlineParam}
             childInsertMember(childInnerTemplate=CHILD_MANAGER_GET_FUNC_TEMPLATE,
                               insertingModule=manager_file_path, subType=1)
             generateApiFuncCount = generateApiFuncCount + 1
-        elif intern(func.api.method) is intern("POST"):
-            if hasInlineParam == True:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response, "[QUERY_PATH]": func.querypath(
-                ), "[FUNC_PARAM]": funcInlineParam, "[REQUEST_MODEL_NAME]": funcBodyInlineParam}
-            else:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response, "[QUERY_PATH]": func.querypath(
-                ), "[FUNC_PARAM]": "", "[REQUEST_MODEL_NAME]": funcBodyInlineParam}
+
+        elif intern(func.httpMethod) is intern("post"):
+
+            # child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.resultModel, "[QUERY_PATH]": func.queryFormula ==
+            #                      "" and func.pathFormula or func.queryFormula, "[FUNC_PARAM]": func.funcInlineParam, "[REQUEST_MODEL_NAME]": funcBodyInlineParam}
+            postSpesificPath = func.queryFormula == "" and func.pathFormula or func.queryFormula
+            postSpesificPath = postSpesificPath == "" and "\"" + \
+                func.path+"\"" or postSpesificPath
+            child_replacement = {"[FUNC_NAME]": func.funcName, "[RESULT_MODEL_NAME]": func.resultModel,
+                                 "[QUERY_PATH]": postSpesificPath, "[FUNC_PARAM]": func.funcInlineParam,
+                                 "[FUNC_PARAM_BODY]": func.postBodyParam}
+            # else:
+            #     child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response, "[QUERY_PATH]": func.querypath(
+            #     ), "[FUNC_PARAM]": "", "[REQUEST_MODEL_NAME]": funcBodyInlineParam}
             childInsertMember(childInnerTemplate=CHILD_MANAGER_POST_FUNC_TEMPLATE,
                               insertingModule=manager_file_path, subType=1)
             generateApiFuncCount = generateApiFuncCount + 1
-    return generateApiFuncCount
 
+        # elif intern(func.httpMethod) is intern("put"):
+        #                 # child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.resultModel, "[QUERY_PATH]": func.queryFormula ==
+        #     #                      "" and func.pathFormula or func.queryFormula, "[FUNC_PARAM]": func.funcInlineParam, "[REQUEST_MODEL_NAME]": funcBodyInlineParam}
+        #     putSpesificPath = func.queryFormula == "" and func.pathFormula or func.queryFormula
+        #     putSpesificPath = putSpesificPath == "" and "\"" + \
+        #         func.path+"\"" or putSpesificPath
+        #     child_replacement = {"[FUNC_NAME]": func.funcName, "[RESULT_MODEL_NAME]": func.resultModel,
+        #                          "[QUERY_PATH]": putSpesificPath == "" and "\"\"" or putSpesificPath, "[FUNC_PARAM]": func.funcInlineParam,
+        #                          "[FUNC_PARAM_BODY]": func.bodyFormula == "" and func.formDataFormula or func.bodyFormula}
 
-def generateUnitTestFunc(Functions):
-    global child_replacement, unit_test_file_path
-    for func in Functions:
-        #showErrorMessages(MESSAGE.INFO,  func.name + " unit test func generating...")
-        hasInlineParam = False
-        funcInlineParam = ""
-        funcBodyInlineParam = ""
-        if len(func.parameters) > 0:
-            for param in func.parameters:
-                #print param.name + " " + param.clazz + " type : " + param.annotation
-                if param.annotation == "Query" or param.annotation == "Path":
-                    hasInlineParam = True
-                    if intern(str(param.clazz)) is intern("String"):
-                        funcInlineParam += "," + "\"test\""
-                    elif intern(str(param.clazz)) is intern("Integer"):
-                        funcInlineParam += "," + "1"
-                    elif intern(str(param.clazz)) is intern("Long"):
-                        funcInlineParam += "," + "1L"
-                    elif intern(str(param.clazz)) is intern("Float"):
-                        funcInlineParam += "," + "1F"
-                if param.annotation == "Body":
-                    funcBodyInlineParam = param.clazz
-            #print param.name + " " + param.clazz + " type : " + param.annotation
-            #print func.bodyparameter
+        #     childInsertMember(childInnerTemplate=CHILD_MANAGER_PUT_FUNC_TEMPLATE,
+        #                       insertingModule=manager_file_path, subType=1)
+        #     generateApiFuncCount = generateApiFuncCount + 1
+        # else:
+        #     deleteSpesificPath = func.queryFormula == "" and func.pathFormula or func.queryFormula
+        #     deleteSpesificPath = deleteSpesificPath == "" and "\"" + \
+        #         func.path+"\"" or deleteSpesificPath
 
-#print func.name + " " + func.api.method + " " + func.api.address + " " + func.response + " " + func.querypath()
-# GET FUNC
-# '''
-        if intern(func.api.method) is intern("GET"):
+        #     func.bodyFormula = func.bodyFormula == "" and func.formDataFormula or func.bodyFormula
+        #     func.bodyFormula = deleteSpesificPath.__contains__(
+        #         func.bodyFormula) == "" and func.formDataFormula or "\"\""
 
-            if hasInlineParam == True:
-                #showErrorMessages(MESSAGE.ERROR,"funcInlineParam : " + funcInlineParam)
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response,
-                                     "[SERVICE_NAME]": param_serviceName, "[FUNC_PARAM]": funcInlineParam}
-            else:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response,
-                                     "[SERVICE_NAME]": param_serviceName, "[FUNC_PARAM]": ""}
-            childInsertMember(childInnerTemplate=CHILD_UNIT_TEST_GET_FUNC_TEMPLATE,
-                              insertingModule=unit_test_file_path, subType=2)
-        elif intern(func.api.method) is intern("POST"):
-            if hasInlineParam == True:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response, "[QUERY_PATH]": func.querypath(
-                ), "[FUNC_PARAM]": funcInlineParam, "[REQUEST_MODEL_NAME]": funcBodyInlineParam, "[SERVICE_NAME]": param_serviceName}
-            else:
-                child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response, "[QUERY_PATH]": func.querypath(
-                ), "[FUNC_PARAM]": "", "[REQUEST_MODEL_NAME]": funcBodyInlineParam, "[SERVICE_NAME]": param_serviceName}
-            childInsertMember(childInnerTemplate=CHILD_UNIT_TEST_POST_FUNC_TEMPLATE,
-                              insertingModule=unit_test_file_path, subType=2)
+        #     child_replacement = {"[FUNC_NAME]": func.funcName, "[RESULT_MODEL_NAME]": func.resultModel,
+        #                          "[QUERY_PATH]": deleteSpesificPath, "[FUNC_PARAM]": func.funcInlineParam,
+        #                          "[JSON_VALUE_KEY]":  "\"\"",
+        #                          }
+        #     # else:
+        #     #     child_replacement = {"[FUNC_NAME]": func.name, "[RESULT_MODEL_NAME]": func.response, "[QUERY_PATH]": func.querypath(
+        #     #     ), "[FUNC_PARAM]": "", "[REQUEST_MODEL_NAME]": funcBodyInlineParam}
+        #     childInsertMember(childInnerTemplate=CHILD_MANAGER_DELETE_FUNC_TEMPLATE,
+        #                       insertingModule=manager_file_path, subType=1)
+        #     generateApiFuncCount = generateApiFuncCount + 1
+        generateApiFuncCount = generateApiFuncCount + 1
+        # print func.funcName
+
+    showErrorMessages(MESSAGE.INFO, str(
+        generateApiFuncCount) + " api func generated")
 
 
 # coding start
@@ -867,13 +1184,18 @@ if len(sys.argv) >= 4:
 
     createParentModules()
     IS_ENABLE_UNIT_TEST_GENERATE = True
-    
 
-    # swagger model replace package and move MODELS
+    # swagger model replacepackage and move MODELS
     runSwaggerModelOperations()
-    createUnitTestModule()
+    # createUnitTestModule()
 
-    runRetrofitParser()
+    swaggerFunctions = getSwaggerFunctionInfo(param_url)
+    print param_url
+    if swaggerFunctions.count > 0:
+        runFuncSwaggerGenerator(swaggerFunctions)
+    else:
+        showErrorMessages(MESSAGE.ERROR, "Swagger Functions not found")
+    # runRetrofitParser()
 
 else:
     showErrorMessages(
