@@ -180,55 +180,55 @@ try:
                     if paramType == "body":
                         func.postBodyParam = name
                         func.bodyFormula += len(func.bodyFormula) > 0 and (
-                            ","+name + " : " + requestModel) or name + " : " + requestModel
-                    elif paramType == "formData":
-                        # len control so check formdata have any items
-                        func.formDataFormula += len(func.formDataFormula) > 0 and (
-                            ", \""+name+"\"" + " : " + "\"\("+name+")") or "\""+name+"\"" + " : " + "\"\("+name+")"
-                    elif paramType == "query":
-                        # if have already added query
-                        if "?" in func.queryFormula:
-                            func.queryFormula += "&"+name+"=\("+name+")"
-                        else:
-                            # first add query at url
-                            func.queryFormula = func.path + \
-                                "?"+name+"=\("+name+")"
-                    elif paramType == "path":
-                        # Fix path double index.
-                        if func.pathFormula == "":
-                            func.pathFormula = func.path.replace(
-                                "{"+name+"}", ("\("+name+")"))
-                        else:
-                            func.pathFormula = func.pathFormula.replace(
-                                "{"+name+"}", ("\("+name+")"))
-                        # is have " character ?
-                        func.pathFormula = func.pathFormula[0] == "\"" and func.pathFormula or "\"" + \
-                            func.pathFormula+"\""
+                            "," + requestModel + " "+name) or requestModel + " " + name
+                        print(func.bodyFormula)
+                    # elif paramType == "formData":
+                    #     # len control so check formdata have any items
+                    #     func.formDataFormula += len(func.formDataFormula) > 0 and (
+                    #         ", \""+name+"\"" + " : " + "\"\("+name+")") or "\""+name+"\"" + " : " + "\"\("+name+")"
+                    # elif paramType == "query":
+                    #     # if have already added query
+                    #     if "?" in func.queryFormula:
+                    #         func.queryFormula += "&"+name+"=\("+name+")"
+                    #     else:
+                    #         # first add query at url
+                    #         func.queryFormula = func.path + \
+                    #             "?"+name+"=\("+name+")"
+                    # elif paramType == "path":
+                    #     # Fix path double index.
+                    #     if func.pathFormula == "":
+                    #         func.pathFormula = func.path.replace(
+                    #             "{"+name+"}", ("\("+name+")"))
+                    #     else:
+                    #         func.pathFormula = func.pathFormula.replace(
+                    #             "{"+name+"}", ("\("+name+")"))
+                    #     # is have " character ?
+                    #     func.pathFormula = func.pathFormula[0] == "\"" and func.pathFormula or "\"" + \
+                    #         func.pathFormula+"\""
 
-                    elif paramType == "header":
-                        func.headerFormula += len(func.bodyFormula) > 0 and (
-                            ","+name + " : " + requestModel) or name + " : " + requestModel
-                    else:
-                        func.pathFormula = "\""+func.pathFormula+"\""
-                    if name != "" and paramType != "header":
-                        if func.funcInlineParam == "":
-                            func.funcInlineParam = name + ": " + requestModel
-                        else:
-                            func.funcInlineParam += ", " + name + ": " + requestModel
-                        func.bodyFormula = name
+                    # elif paramType == "header":
+                    #     func.headerFormula += len(func.bodyFormula) > 0 and (
+                    #         ","+name + " : " + requestModel) or name + " : " + requestModel
+                    # else:
+                    #     func.pathFormula = "\""+func.pathFormula+"\""
+                    # if name != "" and paramType != "header":
+                    #     if func.funcInlineParam == "":
+                    #         func.funcInlineParam = name + ": " + requestModel
+                    #     else:
+                    #         func.funcInlineParam += ", " + name + ": " + requestModel
                     func.parameters.append(make_SwaggerFunctionParam(
                         name, paramType, required, dataType, requestModel))
 
-                # last character add ,
-                if func.funcInlineParam != "":
-                    func.funcInlineParam += ", "
-                    # swift için çift tırnaklı hale getirme
-                if func.queryFormula != "":
-                    func.queryFormula = "\""+func.queryFormula+"\""
-                if func.formDataFormula != "":
-                    # formdata formulayı array olarak parse etmek için
-                    func.formDataFormula = "[" + func.formDataFormula + "]"
-                    func.bodyFormula = ""
+                # # last character add ,
+                # if func.funcInlineParam != "":
+                #     func.funcInlineParam += ", "
+                #     # swift için çift tırnaklı hale getirme
+                # if func.queryFormula != "":
+                #     func.queryFormula = "\""+func.queryFormula+"\""
+                # if func.formDataFormula != "":
+                #     # formdata formulayı array olarak parse etmek için
+                #     func.formDataFormula = "[" + func.formDataFormula + "]"
+                #     func.bodyFormula = ""
             else:
                 # herhangi bir istek yoksa direk path basılır
                 func.pathFormula = "\""+func.path+"\""
